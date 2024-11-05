@@ -1,3 +1,9 @@
+libtraceevent (1:1.7.1-1+pexip24u1) pexip; urgency=medium
+
+  * Prepare Pexip packaging
+
+ -- Steve McIntyre <steve.mcintyre@pexip.com>  Tue, 05 Nov 2024 11:46:40 +0000
+
 libtraceevent (1:1.7.1-1) unstable; urgency=medium
 
   [ Debian Janitor ]

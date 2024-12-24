@@ -1,0 +1,55 @@
+From 8edaaac8bc8e0e19e16ac705ad203779b5f0e9af Mon Sep 17 00:00:00 2001
+From: Pragyansh Chaturvedi <pragyansh.chaturvedi@canonical.com>
+Date: Fri, 6 Dec 2024 11:17:38 +0530
+Subject: [PATCH] libtraceevent: Fix file endianness for big endian hosts
+
+This patch initialises the file endianness to the same value as host endianness.
+Without this, the file endianness is set to little endian by default, which
+results in segfaults of libtracefs testsuite on big endian architectures
+(libtracefs uses libtracevent, and my investigating led to this patch).
+We can make a default assumption that the host and FS endianness is same.
+If it is different, the user must set the correct endianness using the
+event-parse-api (tep_set_file_bigendian)
+
+After applying my fix, the run summary of utest/trace-utest of libtracefs:
+
+Run Summary: Type Total Ran Passed Failed Inactive
+              suites 1 1 n/a 0 0
+               tests 36 36 35 1 0
+             asserts 16407066 16407066 16407064 2 n/a
+
+Elapsed time = 22.623 seconds
+
+Link: https://lore.kernel.org/20241206054739.1431381-1-pragyansh.chaturvedi@canonical.com
+Signed-off-by: Pragyansh Chaturvedi <pragyansh.chaturvedi@canonical.com>
+Signed-off-by: Steven Rostedt (Google) <rostedt@goodmis.org>
+
+Origin: upstream, https://git.kernel.org/pub/scm/libs/libtrace/libtraceevent.git/commit/?id=8edaaac8bc8e0e19e16ac705ad203779b5f0e9af
+Bug: https://bugzilla.kernel.org/show_bug.cgi?id=219543
+Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+source/libtracefs/+bug/2062118
+---
+ src/event-parse.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/event-parse.c b/src/event-parse.c
+index e98429f..33ed7fb 100644
+--- a/src/event-parse.c
++++ b/src/event-parse.c
+@@ -8505,6 +8505,14 @@ struct tep_handle *tep_alloc(void)
+ 	if (tep) {
+ 		tep->ref_count = 1;
+ 		tep->host_bigendian = tep_is_bigendian();
++
++		/*
++		 * We can make the following safe assumption
++		 * for the default case. Else it leaves the
++		 * file endianness as little endian and breaks
++		 * things on big endian architectures.
++		 */
++		tep->file_bigendian = tep->host_bigendian;
+ 	}
+ 
+ 	return tep;
+-- 
+2.39.5
+

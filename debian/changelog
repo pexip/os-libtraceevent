@@ -1,3 +1,59 @@
+libtraceevent (1:1.8.4-2) unstable; urgency=medium
+
+  * Add upstream commit to set default file_bigendian in
+    struct tep_handle. (LP: #2062118)
+    - Thanks Pragyansh Chaturvedi.
+  * Add salsa ci.
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Tue, 24 Dec 2024 12:08:10 +0000
+
+libtraceevent (1:1.8.4-1) unstable; urgency=medium
+
+  * New upstream version 1.8.4
+  * Make sure the test suite run.
+  * debian/rules: ensure build is done with distro build flags
+    - Set EXTRA_CFLAGS to CFLAGS as passed by debhelper
+    - Use DEB_CFLAGS_MAINT_APPEND to honor existing build defaults
+    - Thanks to Nick Rosbrook.
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Sun, 10 Nov 2024 00:18:14 +0000
+
+libtraceevent (1:1.8.3-1) unstable; urgency=medium
+
+  * New upstream version 1.8.3
+  * Update Standards-Version to 4.7.0
+  * Depends on pkgconf instead of pkg-config
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Sun, 28 Jul 2024 20:44:57 +0100
+
+libtraceevent (1:1.8.2-1) unstable; urgency=medium
+
+  * New upstream version 1.8.2
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Sun, 14 Jan 2024 22:08:15 +0000
+
+libtraceevent (1:1.8.1-1) unstable; urgency=medium
+
+  * New upstream version 1.8.1
+    - Update symbols.
+  * Add lintian override.
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Sun, 07 Jan 2024 22:36:44 +0000
+
+libtraceevent (1:1.7.3-1) unstable; urgency=medium
+
+  [ Sudip Mukherjee ]
+  * New upstream version 1.7.3
+    - Update copyright.
+
+  [ Lucas Kanashiro ]
+  * Run upstream make test in dh_auto_test
+    - d/control: add b-d on libcunit1-dev.
+    - d/rules: remove override_dh_auto_test with nothing in it.
+  * d/tests: add DEP-8 test to build samples
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Tue, 20 Jun 2023 21:36:27 +0100
+
 libtraceevent (1:1.7.1-1+pexip24u1) pexip; urgency=medium
 
   * Prepare Pexip packaging

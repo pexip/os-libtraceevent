@@ -2,6 +2,8 @@
 
 include /usr/share/dpkg/architecture.mk
 
+export DEB_CFLAGS_MAINT_APPEND=-g -Wall
+
 ifeq (,$(findstring terse,$(DEB_BUILD_OPTIONS)))
         VERBOSE=1
 endif
@@ -14,9 +16,10 @@ build_flags = prefix=$(PREFIX) libdir_relative=lib/$(DEB_HOST_MULTIARCH) pkgconf
 	dh $@ --no-parallel
 
 override_dh_auto_build:
-	dh_auto_build -- all doc $(build_flags)
+	dh_auto_build -- all doc $(build_flags) EXTRA_CFLAGS="$(CFLAGS)"
 
 override_dh_auto_install:
 	dh_auto_install -- doc-install $(build_flags)
 
-override_dh_auto_test:
+execute_after_dh_auto_test:
+	./utest/trace-utest

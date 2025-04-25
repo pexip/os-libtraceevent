@@ -1,0 +1,18 @@
+Description: Run the unitests as autopkgtest
+Author: Paul Mars <paul.mars@canonical.com>
+Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+source/libtraceevent/+bug/2051916
+Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+source/libtraceevent/+bug/2055258
+Last-Update: 2024-03-11
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+--- a/Makefile
++++ b/Makefile
+@@ -114,7 +114,7 @@
+ OBJ		= $@
+ N		=
+ 
+-LIBTRACEEVENT_STATIC = $(bdir)/libtraceevent.a
++LIBTRACEEVENT_STATIC ?= $(bdir)/libtraceevent.a
+ LIBTRACEEVENT_SHARED = $(bdir)/libtraceevent.so.$(EVENT_PARSE_VERSION)
+ 
+ EP_HEADERS_DIR = $(src)/include/traceevent

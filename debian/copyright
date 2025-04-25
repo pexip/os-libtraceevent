@@ -10,6 +10,7 @@ Copyright: 2009, 2010, 2012, 2015, Red Hat Inc, Steven Rostedt <srostedt@redhat.
            2009, Johannes Berg <johannes@sipsolutions.net>
            2020, VMware, Tzvetomir Stoyanov <tz.stoyanov@gmail.com>
            2022, Google Inc, Steven Rostedt <rostedt@goodmis.org>
+           2023, Daniel Wagner, SUSE LLC
 License:   LGPL-2.1
 
 Files:     Makefile
@@ -27,7 +28,7 @@ Copyright: 2015, Sam Ravnborg <sam@mars.ravnborg.org>
 License:   GPL-2.0
 
 Files:     debian/*
-Copyright: 2020-2022, Sudip Mukherjee <sudipm.mukherjee@gmail.com>
+Copyright: 2020-2023, Sudip Mukherjee <sudipm.mukherjee@gmail.com>
 License:   LGPL-2.1
 
 License:   LGPL-2.1

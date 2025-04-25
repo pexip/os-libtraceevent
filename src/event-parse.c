@@ -1232,9 +1232,11 @@ static enum tep_event_type __read_token(struct tep_handle *tep, char **tok)
 	switch (type) {
 	case TEP_EVENT_NEWLINE:
 	case TEP_EVENT_DELIM:
-		if (asprintf(tok, "%c", ch) < 0)
+		*tok = malloc(2);
+		if (!*tok)
 			return TEP_EVENT_ERROR;
-
+		(*tok)[0] = ch;
+		(*tok)[1] = '\0';
 		return type;
 
 	case TEP_EVENT_OP:
@@ -2195,21 +2197,24 @@ static int set_op_prio(struct tep_print_arg *arg)
 	return arg->op.prio;
 }
 
-static int consolidate_op_arg(struct tep_print_arg *arg)
+static int consolidate_op_arg(enum tep_event_type type, struct tep_print_arg *arg)
 {
 	unsigned long long val, left, right;
 	int ret = 0;
+
+	if (type == TEP_EVENT_ERROR)
+		return -1;
 
 	if (arg->type != TEP_PRINT_OP)
 		return 0;
 
 	if (arg->op.left)
-		ret = consolidate_op_arg(arg->op.left);
+		ret = consolidate_op_arg(type, arg->op.left);
 	if (ret < 0)
 		return ret;
 
 	if (arg->op.right)
-		ret = consolidate_op_arg(arg->op.right);
+		ret = consolidate_op_arg(type, arg->op.right);
 	if (ret < 0)
 		return ret;
 
@@ -2583,7 +2588,7 @@ static int alloc_and_process_delim(struct tep_event *event, char *next_token,
 	if (type == TEP_EVENT_OP) {
 		type = process_op(event, field, &token);
 
-		if (consolidate_op_arg(field) < 0)
+		if (consolidate_op_arg(type, field) < 0)
 			type = TEP_EVENT_ERROR;
 
 		if (type == TEP_EVENT_ERROR)
@@ -2959,7 +2964,7 @@ process_fields(struct tep_event *event, struct tep_print_flag_sym **list, char *
 		free_arg(arg);
 		arg = alloc_arg();
 		if (!arg)
-			goto out_free;
+			goto out_free_field;
 
 		free_token(token);
 		type = process_arg(event, arg, &token);
@@ -3522,7 +3527,7 @@ process_sizeof(struct tep_event *event, struct tep_print_arg *arg, char **tok)
 	struct tep_format_field *field;
 	enum tep_event_type type;
 	char *token = NULL;
-	bool ok = false;
+	bool token_has_paren = false;
 	int ret;
 
 	type = read_token_item(event->tep, &token);
@@ -3537,11 +3542,12 @@ process_sizeof(struct tep_event *event, struct tep_print_arg *arg, char **tok)
 		if (type == TEP_EVENT_ERROR)
 			goto error;
 
+		/* If it's not an item (like "long") then do not process more */
 		if (type != TEP_EVENT_ITEM)
-			ok = true;
+			token_has_paren = true;
 	}
 
-	if (ok || strcmp(token, "int") == 0) {
+	if (token_has_paren || strcmp(token, "int") == 0) {
 		arg->atom.atom = strdup("4");
 
 	} else if (strcmp(token, "long") == 0) {
@@ -3563,8 +3569,25 @@ process_sizeof(struct tep_event *event, struct tep_print_arg *arg, char **tok)
 				goto error;
 			}
 			/* The token is the next token */
-			ok = true;
+			token_has_paren = true;
 		}
+
+	} else if (strcmp(token, "__u64") == 0 || strcmp(token, "u64") == 0 ||
+		   strcmp(token, "__s64") == 0 || strcmp(token, "s64") == 0) {
+		arg->atom.atom = strdup("8");
+
+	} else if (strcmp(token, "__u32") == 0 || strcmp(token, "u32") == 0 ||
+		   strcmp(token, "__s32") == 0 || strcmp(token, "s32") == 0) {
+		arg->atom.atom = strdup("4");
+
+	} else if (strcmp(token, "__u16") == 0 || strcmp(token, "u16") == 0 ||
+		   strcmp(token, "__s16") == 0 || strcmp(token, "s16") == 0) {
+		arg->atom.atom = strdup("2");
+
+	} else if (strcmp(token, "__u8") == 0 || strcmp(token, "u8") == 0 ||
+		   strcmp(token, "__8") == 0 || strcmp(token, "s8") == 0) {
+		arg->atom.atom = strdup("1");
+
 	} else if (strcmp(token, "REC") == 0) {
 
 		free_token(token);
@@ -3586,13 +3609,14 @@ process_sizeof(struct tep_event *event, struct tep_print_arg *arg, char **tok)
 		if (ret < 0)
 			goto error;
 
-	} else if (!ok) {
+	} else {
 		goto error;
 	}
 
-	if (!ok) {
+	if (!token_has_paren) {
+		/* The token contains the last item before the parenthesis */
 		free_token(token);
-		type = read_token_item(event->tep, tok);
+		type = read_token_item(event->tep, &token);
 	}
 	if (test_type_token(type, token,  TEP_EVENT_DELIM, ")"))
 		goto error;
@@ -3730,8 +3754,19 @@ process_arg_token(struct tep_event *event, struct tep_print_arg *arg,
 		arg->atom.atom = atom;
 		break;
 
-	case TEP_EVENT_DQUOTE:
 	case TEP_EVENT_SQUOTE:
+		arg->type = TEP_PRINT_ATOM;
+		/* Make characters into numbers */
+		if (asprintf(&arg->atom.atom, "%d", token[0]) < 0) {
+			free_token(token);
+			*tok = NULL;
+			arg->atom.atom = NULL;
+			return TEP_EVENT_ERROR;
+		}
+		free_token(token);
+		type = read_token_item(event->tep, &token);
+		break;
+	case TEP_EVENT_DQUOTE:
 		arg->type = TEP_PRINT_ATOM;
 		arg->atom.atom = token;
 		type = read_token_item(event->tep, &token);
@@ -3801,7 +3836,7 @@ static int event_read_print_args(struct tep_event *event, struct tep_print_arg *
 			type = process_op(event, arg, &token);
 			free_token(token);
 
-			if (consolidate_op_arg(arg) < 0)
+			if (consolidate_op_arg(type, arg) < 0)
 				type = TEP_EVENT_ERROR;
 
 			if (type == TEP_EVENT_ERROR) {
@@ -4920,18 +4955,19 @@ static void print_str_arg(struct trace_seq *s, void *data, int size,
 		len = eval_num_arg(data, size, event, arg->int_array.count);
 		el_size = eval_num_arg(data, size, event,
 				       arg->int_array.el_size);
+		trace_seq_putc(s, '{');
 		for (i = 0; i < len; i++) {
 			if (i)
-				trace_seq_putc(s, ' ');
+				trace_seq_putc(s, ',');
 
 			if (el_size == 1) {
-				trace_seq_printf(s, "%u", *(uint8_t *)num);
+				trace_seq_printf(s, "0x%x", *(uint8_t *)num);
 			} else if (el_size == 2) {
-				trace_seq_printf(s, "%u", *(uint16_t *)num);
+				trace_seq_printf(s, "0x%x", *(uint16_t *)num);
 			} else if (el_size == 4) {
-				trace_seq_printf(s, "%u", *(uint32_t *)num);
+				trace_seq_printf(s, "0x%x", *(uint32_t *)num);
 			} else if (el_size == 8) {
-				trace_seq_printf(s, "%"PRIu64, *(uint64_t *)num);
+				trace_seq_printf(s, "0x%"PRIx64, *(uint64_t *)num);
 			} else {
 				trace_seq_printf(s, "BAD SIZE:%d 0x%x",
 						 el_size, *(uint8_t *)num);
@@ -4940,6 +4976,7 @@ static void print_str_arg(struct trace_seq *s, void *data, int size,
 
 			num += el_size;
 		}
+		trace_seq_putc(s, '}');
 		break;
 	}
 	case TEP_PRINT_TYPE:
@@ -5177,10 +5214,9 @@ static struct tep_print_arg *make_bprint_args(char *fmt, void *data, int size, s
 				ls = 2;
 				goto process_again;
 			case '0' ... '9':
-				goto process_again;
 			case '.':
-				goto process_again;
 			case '#':
+			case '+':
 				goto process_again;
 			case 'z':
 			case 'Z':
@@ -5984,11 +6020,11 @@ static void print_field_raw(struct trace_seq *s, void *data, int size,
 }
 
 static int print_parse_data(struct tep_print_parse *parse, struct trace_seq *s,
-			    void *data, int size, struct tep_event *event);
+			    void *data, int size, struct tep_event *event, bool raw);
 
 static inline void print_field(struct trace_seq *s, void *data, int size,
 				    struct tep_format_field *field,
-				    struct tep_print_parse **parse_ptr)
+				    struct tep_print_parse **parse_ptr, bool raw)
 {
 	struct tep_event *event = field->event;
 	struct tep_print_parse *start_parse;
@@ -6032,7 +6068,7 @@ static inline void print_field(struct trace_seq *s, void *data, int size,
 		if (has_0x)
 			trace_seq_puts(s, "0x");
 
-		print_parse_data(parse, s, data, size, event);
+		print_parse_data(parse, s, data, size, event, raw);
 
 		if (parse_ptr)
 			*parse_ptr = parse->next;
@@ -6064,7 +6100,7 @@ static inline void print_field(struct trace_seq *s, void *data, int size,
 void tep_print_field_content(struct trace_seq *s, void *data, int size,
 			     struct tep_format_field *field)
 {
-	print_field(s, data, size, field, NULL);
+	print_field(s, data, size, field, NULL, false);
 }
 
 /** DEPRECATED **/
@@ -6072,13 +6108,13 @@ void tep_print_field(struct trace_seq *s, void *data,
 		     struct tep_format_field *field)
 {
 	/* unsafe to use, should pass in size */
-	print_field(s, data, 4096, field, NULL);
+	print_field(s, data, 4096, field, NULL, false);
 }
 
 static inline void
 print_selected_fields(struct trace_seq *s, void *data, int size,
 		      struct tep_event *event,
-		      unsigned long long ignore_mask)
+		      unsigned long long ignore_mask, bool raw)
 {
 	struct tep_print_parse *parse = event->print_fmt.print_cache;
 	struct tep_format_field *field;
@@ -6090,14 +6126,14 @@ print_selected_fields(struct trace_seq *s, void *data, int size,
 			continue;
 
 		trace_seq_printf(s, " %s=", field->name);
-		print_field(s, data, size, field, &parse);
+		print_field(s, data, size, field, &parse, raw);
 	}
 }
 
 void tep_print_fields(struct trace_seq *s, void *data,
 		      int size, struct tep_event *event)
 {
-	print_selected_fields(s, data, size, event, 0);
+	print_selected_fields(s, data, size, event, 0, false);
 }
 
 /**
@@ -6111,7 +6147,7 @@ void tep_record_print_fields(struct trace_seq *s,
 			     struct tep_record *record,
 			     struct tep_event *event)
 {
-	print_selected_fields(s, record->data, record->size, event, 0);
+	print_selected_fields(s, record->data, record->size, event, 0, false);
 }
 
 /**
@@ -6129,12 +6165,12 @@ void tep_record_print_selected_fields(struct trace_seq *s,
 {
 	unsigned long long ignore_mask = ~select_mask;
 
-	print_selected_fields(s, record->data, record->size, event, ignore_mask);
+	print_selected_fields(s, record->data, record->size, event, ignore_mask, false);
 }
 
 static int print_function(struct trace_seq *s, const char *format,
 			  void *data, int size, struct tep_event *event,
-			  struct tep_print_arg *arg)
+			  struct tep_print_arg *arg, bool raw)
 {
 	struct func_map *func;
 	unsigned long long val;
@@ -6145,11 +6181,17 @@ static int print_function(struct trace_seq *s, const char *format,
 		trace_seq_puts(s, func->func);
 		if (*format == 'F' || *format == 'S')
 			trace_seq_printf(s, "+0x%llx", val - func->addr);
-	} else {
+	}
+
+	if (!func || raw) {
+		if (raw)
+			trace_seq_puts(s, " (");
 		if (event->tep->long_size == 4)
 			trace_seq_printf(s, "0x%lx", (long)val);
 		else
 			trace_seq_printf(s, "0x%llx", (long long)val);
+		if (raw)
+			trace_seq_puts(s, ")");
 	}
 
 	return 0;
@@ -6157,7 +6199,8 @@ static int print_function(struct trace_seq *s, const char *format,
 
 static int print_arg_pointer(struct trace_seq *s, const char *format, int plen,
 			     void *data, int size,
-			     struct tep_event *event, struct tep_print_arg *arg)
+			     struct tep_event *event, struct tep_print_arg *arg,
+			     bool raw)
 {
 	unsigned long long val;
 	int ret = 1;
@@ -6179,7 +6222,7 @@ static int print_arg_pointer(struct trace_seq *s, const char *format, int plen,
 	case 'f':
 	case 'S':
 	case 's':
-		ret += print_function(s, format, data, size, event, arg);
+		ret += print_function(s, format, data, size, event, arg, raw);
 		break;
 	case 'M':
 	case 'm':
@@ -6441,6 +6484,7 @@ static int parse_arg_format(struct tep_print_parse **parse,
 		case '.':
 		case '0' ... '9':
 		case '-':
+		case '+':
 			break;
 		case '*':
 			/* The argument is the length. */
@@ -6484,6 +6528,7 @@ static int parse_arg_format(struct tep_print_parse **parse,
 			*arg = (*arg)->next;
 			ret++;
 			return ret;
+		case 'c':
 		case 'd':
 		case 'u':
 		case 'i':
@@ -6641,7 +6686,7 @@ parse_args(struct tep_event *event, const char *format, struct tep_print_arg *ar
 }
 
 static int print_parse_data(struct tep_print_parse *parse, struct trace_seq *s,
-			    void *data, int size, struct tep_event *event)
+			    void *data, int size, struct tep_event *event, bool raw)
 {
 	int len_arg;
 
@@ -6657,7 +6702,7 @@ static int print_parse_data(struct tep_print_parse *parse, struct trace_seq *s,
 	case PRINT_FMT_ARG_POINTER:
 		print_arg_pointer(s, parse->format,
 				  parse->len_as_arg ? len_arg : 1,
-				  data, size, event, parse->arg);
+				  data, size, event, parse->arg, raw);
 		break;
 	case PRINT_FMT_ARG_STRING:
 		print_arg_string(s, parse->format,
@@ -6678,7 +6723,7 @@ static void print_event_cache(struct tep_print_parse *parse, struct trace_seq *s
 			      void *data, int size, struct tep_event *event)
 {
 	while (parse) {
-		print_parse_data(parse, s, data, size, event);
+		print_parse_data(parse, s, data, size, event, false);
 		parse = parse->next;
 	}
 }
@@ -6869,6 +6914,21 @@ const char *tep_data_comm_from_pid(struct tep_handle *tep, int pid)
 	return comm;
 }
 
+/**
+ * tep_record_is_event - return true if the given record is the given event
+ * @record: The record to see is the @event
+ * @event: The event to test against @record
+ *
+ * Returns true if the record is of the given event, false otherwise
+ */
+bool tep_record_is_event(struct tep_record *record, struct tep_event *event)
+{
+	int type;
+
+	type = tep_data_type(event->tep, record);
+	return event->id == type;
+}
+
 static struct tep_cmdline *
 pid_from_cmdlist(struct tep_handle *tep, const char *comm, struct tep_cmdline *next)
 {
@@ -6970,7 +7030,7 @@ static void print_event_info(struct trace_seq *s, char *format, bool raw,
 	int print_pretty = 1;
 
 	if (raw || (event->flags & TEP_EVENT_FL_PRINTRAW))
-		tep_print_fields(s, record->data, record->size, event);
+		print_selected_fields(s, record->data, record->size, event, 0, true);
 	else {
 
 		if (event->handler && !(event->flags & TEP_EVENT_FL_NOHANDLE))

@@ -1,3 +1,9 @@
+libtraceevent (1:1.8.4-2+pexip25u1) pexip-trixie; urgency=medium
+
+  * Initial trixie build
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Tue, 29 Apr 2025 22:37:53 +0100
+
 libtraceevent (1:1.8.4-2) unstable; urgency=medium
 
   * Add upstream commit to set default file_bigendian in
